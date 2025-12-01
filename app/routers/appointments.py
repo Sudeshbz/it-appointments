@@ -8,6 +8,9 @@ from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_user
 
+# 🔴 YENİ: queue importları
+from ..queue import queue, send_appointment_created_email
+
 router = APIRouter(
     prefix="/appointments",
     tags=["appointments"],
@@ -59,6 +62,18 @@ def create_appointment(
     db.add(appointment)
     db.commit()
     db.refresh(appointment)
+
+    # 🔴 YENİ: Randevu oluşturulduktan sonra message queue'ya iş at
+    try:
+        queue.enqueue(
+            send_appointment_created_email,
+            appointment_id=appointment.id,
+            user_email=current_user.email,  # Employee modelinde email alanı olduğunu varsayıyorum
+        )
+    except Exception as e:
+        # Kuyruk hata verse bile API çökmesin, loglanıp geçilebilir
+        print(f"[QUEUE ERROR] Randevu için job oluşturulamadı: {e}")
+
     return appointment
 
 

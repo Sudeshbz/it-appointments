@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # SQLite için
     SQLALCHEMY_DATABASE_URL: str = "sqlite:///./it_appointments.db"
-
+    REDIS_URL: str
     class Config:
         env_file = ".env"
 

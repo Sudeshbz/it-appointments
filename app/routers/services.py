@@ -14,7 +14,7 @@ router = APIRouter(
 
 
 # -------------------------------------------------
-# 1) HİZMET OLUŞTUR (BUNU ZATEN KULLANIYORDUK)
+# 1) HİZMET OLUŞTUR
 # -------------------------------------------------
 @router.post("/", response_model=schemas.ServiceOut, status_code=status.HTTP_201_CREATED)
 def create_service(
@@ -42,9 +42,7 @@ def list_services(
     db: Session = Depends(get_db),
     current_user: models.Employee = Depends(get_current_user),
 ):
-    """
-    Giriş yapan kullanıcının şirketine ait TÜM hizmetleri döner.
-    """
+    print("[DB QUERY] /services listesi DB'den çekildi")
     services = (
         db.query(models.Service)
         .filter(models.Service.company_id == current_user.company_id)
