@@ -1,3 +1,8 @@
+import json
+from ..config import settings
+from redis import Redis
+
+
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -34,50 +39,38 @@ def create_service(
     return service
 
 
-# -------------------------------------------------
-# 2) HİZMETLERİ LİSTELE
-# -------------------------------------------------
+# Redis bağlantısı (Global olarak bir yerde tanımlamak daha iyi ama hızlı çözüm için buraya alalım)
+redis_cache = Redis.from_url(settings.REDIS_URL)
+
 @router.get("/", response_model=List[schemas.ServiceOut])
 def list_services(
     db: Session = Depends(get_db),
     current_user: models.Employee = Depends(get_current_user),
 ):
-    print("[DB QUERY] /services listesi DB'den çekildi")
+    # 1. Önce Redis'e bak (Cache Key: company_id'ye özel olmalı!)
+    cache_key = f"services_company_{current_user.company_id}"
+    cached_data = redis_cache.get(cache_key)
+
+    if cached_data:
+        print("[CACHE] Veri Redis'ten geldi ⚡️")
+        # Redis'te veri string (JSON) durur, onu listeye çevir
+        return json.loads(cached_data)
+
+    # 2. Yoksa Veritabanından Çek
+    print("[DB] Veri Veritabanından geldi 🐢")
     services = (
         db.query(models.Service)
         .filter(models.Service.company_id == current_user.company_id)
         .all()
     )
+
+    # 3. Veriyi Redis'e Kaydet (JSON formatında) ve 60 saniye ömür biç
+    # Pydantic modellerini dict'e çevirmek için jsonable_encoder gerekebilir ama
+    # basitçe manuel serialize edelim:
+    services_json = json.dumps([s.dict() for s in services], default=str)
+    redis_cache.setex(cache_key, 60, services_json) # 60 saniye cache
+
     return services
-
-
-# -------------------------------------------------
-# 3) TEK BİR HİZMETİ GETİR
-# -------------------------------------------------
-@router.get("/{service_id}", response_model=schemas.ServiceOut)
-def get_service(
-    service_id: int,
-    db: Session = Depends(get_db),
-    current_user: models.Employee = Depends(get_current_user),
-):
-    """
-    Parametre olarak verilen ID'li hizmeti döner.
-    Sadece kullanıcının kendi şirketine aitse erişebilir.
-    """
-    service = (
-        db.query(models.Service)
-        .filter(
-            models.Service.id == service_id,
-            models.Service.company_id == current_user.company_id,
-        )
-        .first()
-    )
-    if not service:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Hizmet bulunamadı.",
-        )
-    return service
 
 
 # -------------------------------------------------

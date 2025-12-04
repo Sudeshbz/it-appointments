@@ -1,0 +1,24 @@
+# k8s/worker.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: it-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: it-worker
+  template:
+    metadata:
+      labels:
+        app: it-worker
+    spec:
+      containers:
+      - name: it-worker
+        image: rukiyemelek/it-appointments:v1
+        command: ["python", "-m", "app.worker"] # 🔴 Worker komutu
+        env:
+        - name: SQLALCHEMY_DATABASE_URL
+          value: "postgresql://ituser:itpassword@postgres-service/itappointments"
+        - name: REDIS_URL
+          value: "redis://redis-service:6379/0"

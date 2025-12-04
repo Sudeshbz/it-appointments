@@ -1,5 +1,5 @@
+# app/routers/appointments.py
 from typing import List
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -8,8 +8,8 @@ from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_user
 
-# 🔴 YENİ: queue importları
-from ..queue import queue, send_appointment_created_email
+# 🔴 KRİTİK DÜZELTME: Eski mail fonksiyonu yerine AI worker fonksiyonunu çağırıyoruz
+from ..queue import queue, process_appointment_ai
 
 router = APIRouter(
     prefix="/appointments",
@@ -18,7 +18,7 @@ router = APIRouter(
 
 
 # -------------------------------------------------
-# 1) RANDEVU OLUŞTUR
+# 1) RANDEVU OLUŞTUR (AI TETİKLENİR)
 # -------------------------------------------------
 @router.post("/", response_model=schemas.AppointmentOut, status_code=status.HTTP_201_CREATED)
 def create_appointment(
@@ -48,10 +48,11 @@ def create_appointment(
             detail="Hizmet bulunamadı veya sizin şirketinize ait değil.",
         )
 
+    # Randevuyu veritabanına kaydet (Status: Pending)
     appointment = models.Appointment(
         company_id=current_user.company_id,
         user_id=current_user.id,
-        it_staff_id=None,  # şimdilik otomatik atamıyoruz
+        it_staff_id=None,  # Henüz kimse atanmadı
         service_id=appointment_in.service_id,
         start_time=appointment_in.start_time,
         end_time=appointment_in.end_time,
@@ -63,16 +64,16 @@ def create_appointment(
     db.commit()
     db.refresh(appointment)
 
-    # 🔴 YENİ: Randevu oluşturulduktan sonra message queue'ya iş at
+    # 🔴 AI ENTEGRASYONU: Randevu ID'sini kuyruğa atıyoruz
+    # Worker bunu alıp notları okuyacak ve [DONANIM] gibi etiket ekleyecek.
     try:
         queue.enqueue(
-            send_appointment_created_email,
-            appointment_id=appointment.id,
-            user_email=current_user.email,  # Employee modelinde email alanı olduğunu varsayıyorum
+            process_appointment_ai,
+            appointment_id=appointment.id
         )
     except Exception as e:
-        # Kuyruk hata verse bile API çökmesin, loglanıp geçilebilir
-        print(f"[QUEUE ERROR] Randevu için job oluşturulamadı: {e}")
+        # Kuyruk hatası API'yi çökertmesin, sadece loglasın
+        print(f"[QUEUE ERROR] AI Job oluşturulamadı: {e}")
 
     return appointment
 
@@ -98,7 +99,7 @@ def list_my_appointments(
 
 
 # -------------------------------------------------
-# 3) ŞİRKETTEKİ TÜM RANDEVULAR (sadece admin / it_staff)
+# 3) ŞİRKETTEKİ TÜM RANDEVULAR (Sadece Admin / IT Staff)
 # -------------------------------------------------
 @router.get("/", response_model=List[schemas.AppointmentOut])
 def list_company_appointments(
@@ -121,7 +122,7 @@ def list_company_appointments(
 
 
 # -------------------------------------------------
-# 4) RANDEVUYA IT PERSONELİ ATA (admin / it_staff)
+# 4) RANDEVUYA IT PERSONELİ ATA (Admin / IT Staff)
 # -------------------------------------------------
 @router.patch("/{appointment_id}/assign-it", response_model=schemas.AppointmentOut)
 def assign_it_staff(
@@ -130,13 +131,14 @@ def assign_it_staff(
     db: Session = Depends(get_db),
     current_user: models.Employee = Depends(get_current_user),
 ):
-    # Sadece admin veya it_staff atama yapabilsin
+    # Yetki Kontrolü
     if current_user.role not in [models.RoleEnum.admin, models.RoleEnum.it_staff]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="IT personeli atamak için yetkiniz yok.",
         )
 
+    # Randevuyu Bul
     appointment = (
         db.query(models.Appointment)
         .filter(
@@ -151,7 +153,7 @@ def assign_it_staff(
             detail="Randevu bulunamadı.",
         )
 
-    # Atanacak kişi aynı şirkette bir çalışan mı?
+    # Atanacak personel bu şirkette mi?
     it_staff = (
         db.query(models.Employee)
         .filter(
@@ -173,7 +175,7 @@ def assign_it_staff(
 
 
 # -------------------------------------------------
-# 5) RANDEVU DURUMUNU GÜNCELLE (admin / it_staff)
+# 5) RANDEVU DURUMUNU GÜNCELLE (Admin / IT Staff)
 # -------------------------------------------------
 @router.patch("/{appointment_id}/status", response_model=schemas.AppointmentOut)
 def update_appointment_status(
@@ -202,7 +204,7 @@ def update_appointment_status(
             detail="Randevu bulunamadı.",
         )
 
-    # Örn: basit bir iş kuralı – tamamlanan randevu tekrar pending yapılamasın
+    # Basit iş kuralı: Tamamlanan tekrar pending olamaz
     if appointment.status == models.AppointmentStatusEnum.completed and data.status == models.AppointmentStatusEnum.pending:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
