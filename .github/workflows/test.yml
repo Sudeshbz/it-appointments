@@ -3,9 +3,9 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [ rukiye ]
   pull_request:
-    branches: [ main ]
+    branches: [ rukiye ]
 
 jobs:
   test:
@@ -25,7 +25,7 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         
     - name: Run Tests
-      # Basitçe kodun hata verip vermediğini (import hatası vs.) kontrol eder
+      
       run: |
         # Pytest yoksa yükle ve çalıştır
         pip install pytest
