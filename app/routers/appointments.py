@@ -69,7 +69,7 @@ def create_appointment(
 
     try:
         queue.enqueue(
-            "app.worker.process_appointment_ai", 
+            "app.queue.process_appointment_ai", 
             appointment_id=appointment.id
         )
     except Exception as e:
