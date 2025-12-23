@@ -1,10 +1,9 @@
-# k8s/api.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: it-api
 spec:
-  replicas: 3  # 🔴 Slayt Madde 4: Ölçeklenebilirlik
+  replicas: 3  
   selector:
     matchLabels:
       app: it-api
@@ -15,11 +14,11 @@ spec:
     spec:
       containers:
       - name: it-api
-        image: rukiyemelek/it-appointments:v1  # Senin imajın!
+        image: rukiyemelek/it-appointments:v1  
         ports:
         - containerPort: 8000
         env:
-        # Docker Compose'daki linkler yerine K8s Service isimlerini yazıyoruz:
+       
         - name: SQLALCHEMY_DATABASE_URL
           value: "postgresql://ituser:itpassword@postgres-service/itappointments"
         - name: REDIS_URL

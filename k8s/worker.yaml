@@ -1,4 +1,3 @@
-# k8s/worker.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -16,7 +15,7 @@ spec:
       containers:
       - name: it-worker
         image: rukiyemelek/it-appointments:v1
-        command: ["python", "-m", "app.worker"] # 🔴 Worker komutu
+        command: ["python", "-m", "app.worker"] 
         env:
         - name: SQLALCHEMY_DATABASE_URL
           value: "postgresql://ituser:itpassword@postgres-service/itappointments"
