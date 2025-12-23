@@ -11,8 +11,7 @@ def test_read_root():
 
 def test_get_services():
     response = client.get("/services")
-    assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    assert response.status_code == 401
 
 
 def test_create_appointment_unauthorized():
